@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Converta fotos do iPhone (HEIC/HEIF) para JPEG em lote, direto no navegador, sem limite e sem enviar as fotos para nenhum servidor.">
+<title>Conversor HEIC para JPEG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna estreita de ferramenta — área de soltar, ajustes, barra de progresso e a lista de fotos convertidas */
+:root {
+  --bg: #eef1f0;
+  --surface: #ffffff;
+  --ink: #17201e;
+  --muted: #5c6b67;
+  --line: #d3dbd8;
+  --accent: #0f6b5c;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefe9;
+  --ok: #1d7a3a;
+  --err: #b42318;
+  --warn: #8a5a00;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101614; --surface: #18201e; --ink: #e6ecea; --muted: #94a39f; --line: #2b3633;
+    --accent: #4cc2aa; --accent-ink: #06231d; --accent-soft: #173a33;
+    --ok: #5fd07f; --err: #ff8a7a; --warn: #f0b84a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101614; --surface: #18201e; --ink: #e6ecea; --muted: #94a39f; --line: #2b3633;
+  --accent: #4cc2aa; --accent-ink: #06231d; --accent-soft: #173a33;
+  --ok: #5fd07f; --err: #ff8a7a; --warn: #f0b84a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+}
+.wrap {
+  max-width: 720px; margin: 0 auto;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px;
+}
+header { display: grid; gap: 6px; }
+h1 {
+  font-family: var(--font-display); font-weight: 700; font-size: clamp(1.7rem, 5vw, 2.3rem);
+  line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance;
+}
+h1 .arrow { color: var(--accent); }
+header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.drop {
+  border: 2px dashed var(--line); border-radius: 14px; background: var(--surface);
+  padding: 28px 18px; display: grid; gap: 12px; justify-items: center; text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop .big { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; }
+.drop small { color: var(--muted); }
+.btn {
+  font: inherit; font-weight: 600; border-radius: 10px; padding: 11px 18px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+}
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.settings {
+  display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+}
+.settings label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+.settings input[type=range] { width: 160px; accent-color: var(--accent); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.status {
+  display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; padding: 16px;
+}
+.status-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+.status-top strong { font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; }
+.bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.note.warn { color: var(--warn); }
+
+ul.files { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.file {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 8px 8px;
+}
+.thumb {
+  width: 52px; height: 52px; border-radius: 8px; background: var(--bg); object-fit: cover;
+  display: block; border: 1px solid var(--line);
+}
+.meta { min-width: 0; display: grid; gap: 2px; }
+.name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { font-size: 12.5px; color: var(--muted); }
+.pill {
+  font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap;
+}
+.pill.wait { color: var(--muted); }
+.pill.work { color: var(--accent); }
+.pill.done { color: var(--ok); }
+.pill.fail { color: var(--err); }
+.mini {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: none;
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; min-height: 36px;
+}
+.empty {
+  border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 10px;
+  background: var(--surface);
+}
+.empty h2 { font-family: var(--font-display); font-size: 1.05rem; margin: 0; font-weight: 600; }
+.empty ol { margin: 0; padding-left: 20px; color: var(--muted); display: grid; gap: 4px; }
+footer { font-size: 12.5px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>HEIC <span class="arrow">→</span> JPEG</h1>
+    <p>Converta fotos do iPhone (.heic / .heif) para JPEG. A conversão acontece no seu próprio aparelho: as fotos não são enviadas para nenhum servidor.</p>
+  </header>
+
+  <label class="drop" id="drop" for="picker">
+    <span class="big">Solte as fotos aqui</span>
+    <small>ou</small>
+    <span class="btn" role="button">Escolher fotos</span>
+    <small>Pode selecionar várias de uma vez</small>
+    <input type="file" id="picker" multiple accept=".heic,.heif,image/heic,image/heif">
+  </label>
+
+  <div class="settings">
+    <label for="quality">Qualidade do JPEG
+      <input type="range" id="quality" min="50" max="100" step="5" value="90">
+      <span class="mono" id="qval">90%</span>
+    </label>
+  </div>
+
+  <section class="status" id="status" hidden>
+    <div class="status-top">
+      <strong id="count">0 de 0 convertidas</strong>
+      <span class="sub mono" id="sizes"></span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="actions">
+      <button class="btn" id="zipBtn" disabled>Baixar todas (.zip)</button>
+      <button class="btn ghost" id="clearBtn">Limpar lista</button>
+    </div>
+    <p class="note" id="note"></p>
+  </section>
+
+  <section class="empty" id="empty">
+    <h2>Como usar</h2>
+    <ol>
+      <li>Escolha ou arraste as fotos .heic.</li>
+      <li>Espere a conversão. Cada foto leva alguns segundos.</li>
+      <li>Baixe todas juntas em um .zip, ou uma por uma.</li>
+    </ol>
+  </section>
+
+  <ul class="files" id="list"></ul>
+
+  <footer>As fotos convertidas ficam só nesta aba. Ao fechar, a lista some.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const picker = $("picker"), drop = $("drop"), list = $("list");
+  const quality = $("quality"), qval = $("qval");
+  const statusEl = $("status"), countEl = $("count"), sizesEl = $("sizes"), bar = $("bar");
+  const zipBtn = $("zipBtn"), clearBtn = $("clearBtn"), note = $("note"), empty = $("empty");
+
+  const items = [];        // {id, file, name, state, blob, url, li}
+  let queueRunning = false;
+  // Download direto pelo navegador (versão para GitHub Pages)
+  const downloads = {
+    save({ filename, data }) {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.style.display = "none";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return Promise.resolve({ status: "saved" });
+    }
+  };
+  let seq = 0;
+
+  try { const q = localStorage.getItem("heic-q"); if (q) { quality.value = q; } } catch (e) {}
+  qval.textContent = quality.value + "%";
+  quality.addEventListener("input", () => {
+    qval.textContent = quality.value + "%";
+    try { localStorage.setItem("heic-q", quality.value); } catch (e) {}
+  });
+
+
+  const fmt = (b) => b < 1048576 ? (b / 1024).toFixed(0) + " KB" : (b / 1048576).toFixed(1) + " MB";
+  const jpgName = (n) => n.replace(/\.(heic|heif)$/i, "") + ".jpg";
+  const isHeic = (f) => /\.(heic|heif)$/i.test(f.name) || /heic|heif/i.test(f.type);
+
+  function addFiles(files) {
+    const arr = Array.from(files || []);
+    if (!arr.length) return;
+    for (const file of arr) {
+      const it = { id: ++seq, file, name: jpgName(file.name), state: "wait", blob: null, url: null };
+      it.li = renderItem(it);
+      list.appendChild(it.li);
+      if (!isHeic(file)) { setState(it, "fail", "Não é um arquivo HEIC/HEIF"); }
+      items.push(it);
+    }
+    refresh();
+    runQueue();
+  }
+
+  function renderItem(it) {
+    const li = document.createElement("li");
+    li.className = "file";
+    li.innerHTML = '<div class="thumb"></div><div class="meta"><span class="name"></span><span class="sub"></span></div><span class="pill wait">Na fila</span>';
+    li.querySelector(".name").textContent = it.name;
+    li.querySelector(".sub").textContent = it.file.name + " · " + fmt(it.file.size);
+    return li;
+  }
+
+  function setState(it, state, msg) {
+    it.state = state;
+    const right = it.li.lastElementChild;
+    const sub = it.li.querySelector(".sub");
+    if (state === "work") { right.className = "pill work"; right.textContent = "Convertendo"; }
+    if (state === "fail") {
+      right.className = "pill fail"; right.textContent = "Erro";
+      sub.textContent = it.file.name + " · " + (msg || "Não foi possível converter");
+    }
+    if (state === "done") {
+      const img = document.createElement("img");
+      img.className = "thumb"; img.alt = it.name; img.src = it.url; img.loading = "lazy";
+      it.li.firstElementChild.replaceWith(img);
+      sub.textContent = fmt(it.file.size) + " → " + fmt(it.blob.size);
+      const btn = document.createElement("button");
+      btn.className = "mini"; btn.type = "button"; btn.textContent = "Baixar";
+      btn.addEventListener("click", () => saveOne(it));
+      btn.hidden = !downloads;
+      it.btn = btn;
+      right.replaceWith(btn);
+    }
+  }
+
+  async function runQueue() {
+    if (queueRunning) return;
+    queueRunning = true;
+    let it;
+    while ((it = items.find((x) => x.state === "wait"))) {
+      setState(it, "work");
+      try {
+        let out = await heic2any({ blob: it.file, toType: "image/jpeg", quality: Number(quality.value) / 100 });
+        if (Array.isArray(out)) out = out[0];
+        it.blob = out;
+        it.url = URL.createObjectURL(out);
+        setState(it, "done");
+      } catch (e) {
+        setState(it, "fail", "Não foi possível converter este arquivo");
+      }
+      refresh();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    queueRunning = false;
+    refresh();
+  }
+
+  function refresh() {
+    const total = items.length;
+    const done = items.filter((x) => x.state === "done");
+    const failed = items.filter((x) => x.state === "fail").length;
+    const finished = done.length + failed;
+    statusEl.hidden = total === 0;
+    empty.hidden = total > 0;
+    countEl.textContent = done.length + " de " + total + " convertidas" + (failed ? " · " + failed + " com erro" : "");
+    const before = done.reduce((s, x) => s + x.file.size, 0);
+    const after = done.reduce((s, x) => s + x.blob.size, 0);
+    sizesEl.textContent = done.length ? fmt(before) + " → " + fmt(after) : "";
+    bar.style.width = total ? (finished / total * 100) + "%" : "0";
+    zipBtn.hidden = !downloads;
+    zipBtn.disabled = !done.length || queueRunning;
+    zipBtn.textContent = queueRunning && done.length ? "Aguarde terminar…" : "Baixar todas (.zip)";
+    items.forEach((x) => { if (x.btn) x.btn.hidden = !downloads; });
+    if (!downloads && done.length) {
+      note.className = "note warn";
+      note.textContent = "O download não está disponível nesta visualização. Abra a página pelo link no navegador ou no app Claude. No celular, você também pode tocar e segurar uma miniatura para salvar.";
+    } else if (note.classList.contains("warn")) {
+      note.className = "note"; note.textContent = "";
+    }
+  }
+
+  function showNote(text, warn) { note.className = warn ? "note warn" : "note"; note.textContent = text; }
+
+  async function saveOne(it) {
+    if (!downloads) return;
+    try { await downloads.save({ filename: it.name, data: it.blob }); showNote("Baixando: " + it.name); }
+    catch (e) { handleErr(e); }
+  }
+
+  zipBtn.addEventListener("click", async () => {
+    const done = items.filter((x) => x.state === "done");
+    if (!done.length || !downloads) return;
+    zipBtn.disabled = true;
+    showNote("Montando o .zip…");
+    try {
+      const zip = new JSZip();
+      const used = new Set();
+      for (const it of done) {
+        let n = it.name, k = 2;
+        while (used.has(n.toLowerCase())) { n = it.name.replace(/\.jpg$/, "") + " (" + k++ + ").jpg"; }
+        used.add(n.toLowerCase());
+        zip.file(n, it.blob, { binary: true });
+      }
+      const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+      const d = new Date();
+      const stamp = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      await downloads.save({ filename: "fotos-jpeg-" + stamp + ".zip", data: blob });
+      showNote("Baixando " + done.length + " fotos em .zip. Veja na pasta Downloads.");
+    } catch (e) { handleErr(e); }
+    finally { refresh(); }
+  });
+
+  function handleErr(e) {
+    const c = e && e.code;
+    if (c === "declined") showNote("Download cancelado.");
+    else if (c === "rate_limited") showNote("Já existe um download aguardando confirmação. Confirme ou cancele e tente de novo.", true);
+    else if (c === "too_large") showNote("O arquivo ficou grande demais. Baixe em partes: limpe a lista e converta menos fotos por vez.", true);
+    else showNote("Não foi possível baixar agora. Tente abrir a página no navegador.", true);
+  }
+
+  clearBtn.addEventListener("click", () => {
+    if (queueRunning) { items.forEach((x) => { if (x.state === "wait") x.state = "skip"; }); }
+    items.forEach((x) => { if (x.url) URL.revokeObjectURL(x.url); });
+    items.length = 0; list.innerHTML = ""; note.textContent = ""; picker.value = "";
+    refresh();
+  });
+
+  picker.addEventListener("change", () => { addFiles(picker.files); picker.value = ""; });
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+
+  if (typeof heic2any === "undefined") {
+    statusEl.hidden = false; empty.hidden = true;
+    showNote("O conversor não carregou. Verifique a internet e recarregue a página.", true);
+  }
+})();
+</script>
+</body>
+</html>
